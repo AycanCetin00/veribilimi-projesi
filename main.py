@@ -383,7 +383,7 @@ def recommend_movies_content_based(user_id, top_n=5):
     return result
 
 # -------------------------
-# 16) HİBRİT ÖNERI SISTEMI
+# 16) HİBRİT ÖNERİ SISTEMI
 # -------------------------
 
 def recommend_movies_hybrid(user_id, top_n=5, alpha=0.6):
@@ -411,7 +411,7 @@ def recommend_movies_hybrid(user_id, top_n=5, alpha=0.6):
 # 17) ÖNERİLERİ TEST ET VE KARŞILAŞTIR
 # -------------------------
 
-test_users = [1, 5, 10, 25]
+test_users = [1, 2, 3, 3]
 
 print("\n" + "="*100)
 print("KULLANICI ÖNERİ SİSTEMİ TEST SONUÇLARI")
@@ -472,3 +472,173 @@ joblib.dump({
 }, "recommendation_system.joblib")
 
 print("\n\n✓ Tüm sistem kaydedildi: recommendation_system.joblib")
+
+# -----------------------------------------------
+# 19) DETAYLI İSTATİSTİKSEL ANALİZ
+# -----------------------------------------------
+
+print("\n" + "="*100)
+print("DETAYLI İSTATİSTİKSEL ANALİZ")
+print("="*100)
+
+# Genel istatistikler
+print("\n📊 GENEL FİLM İSTATİSTİKLERİ:")
+print(f"Toplam Film: {len(movies_with_clusters)}")
+print(f"Ortalama Bütçe: ${movies_with_clusters['budget'].mean():,.0f}")
+print(f"Ortalama Gelir: ${movies_with_clusters['revenue'].mean():,.0f}")
+print(f"Ortalama Popularity: {movies_with_clusters['popularity'].mean():.2f}")
+print(f"Ortalama Vote Average: {movies_with_clusters['vote_average'].mean():.2f}")
+print(f"Ortalama Runtime: {movies_with_clusters['runtime'].mean():.0f} dakika")
+
+# Cluster başına detaylı istatistikler
+print("\n📈 CLUSTER BAŞINA DETAİLLİ İSTATİSTİKLER:")
+for cl in sorted(movies_with_clusters["cluster"].dropna().unique()):
+    cluster_data = movies_with_clusters[movies_with_clusters["cluster"] == cl]
+    print(f"\n--- CLUSTER {int(cl)} ({len(cluster_data)} film) ---")
+    print(f"   Bütçe: Min=${cluster_data['budget'].min():,.0f}, "
+          f"Max=${cluster_data['budget'].max():,.0f}, "
+          f"Ort=${cluster_data['budget'].mean():,.0f}")
+    print(f"   Gelir: Min=${cluster_data['revenue'].min():,.0f}, "
+          f"Max=${cluster_data['revenue'].max():,.0f}, "
+          f"Ort=${cluster_data['revenue'].mean():,.0f}")
+    print(f"   Popularity: Ort={cluster_data['popularity'].mean():.2f}, "
+          f"Std={cluster_data['popularity'].std():.2f}")
+    print(f"   Vote Average: Ort={cluster_data['vote_average'].mean():.2f}")
+    print(f"   Runtime: Ort={cluster_data['runtime'].mean():.0f} dakika")
+
+# -----------------------------------------------
+# 20) ÖNERİ SİSTEMİ PERFORMANS DEĞERLENDİRMESİ
+# -----------------------------------------------
+
+print("\n" + "="*100)
+print("ÖNERİ SİSTEMİ PERFORMANS DEĞERLENDİRMESİ")
+print("="*100)
+
+# Her kullanıcı-yöntem kombinasyonu için başarı oranı
+recommendation_stats = {
+    'collaborative': {'success': 0, 'total': 0},
+    'content_based': {'success': 0, 'total': 0},
+    'hybrid': {'success': 0, 'total': 0}
+}
+
+all_test_users = list(user_behavior_df['user_id'].unique())[:20]  # 20 kullanıcı test et
+
+for user_id in all_test_users:
+    # İşbirlikçi
+    collab = recommend_movies_collaborative(user_id, top_n=5)
+    recommendation_stats['collaborative']['total'] += 1
+    if not collab.empty:
+        recommendation_stats['collaborative']['success'] += 1
+    
+    # İçerik tabanlı
+    content = recommend_movies_content_based(user_id, top_n=5)
+    recommendation_stats['content_based']['total'] += 1
+    if not content.empty:
+        recommendation_stats['content_based']['success'] += 1
+    
+    # Hibrit
+    hybrid = recommend_movies_hybrid(user_id, top_n=5)
+    recommendation_stats['hybrid']['total'] += 1
+    if not hybrid.empty:
+        recommendation_stats['hybrid']['success'] += 1
+
+print("\n📊 ÖNERİ SİSTEMİ BAŞARI ORANI (20 kullanıcı üzerinde):")
+for method, stats in recommendation_stats.items():
+    success_rate = (stats['success'] / stats['total'] * 100) if stats['total'] > 0 else 0
+    print(f"   {method.upper()}: {success_rate:.1f}% ({stats['success']}/{stats['total']})")
+
+# -----------------------------------------------
+# 21) GÖRSELLEŞTIRMELER - ÖNERİ KARŞILAŞTIRMASI
+# -----------------------------------------------
+
+# Rastgele bir kullanıcı seç ve önerileri görselleştir
+random_user = np.random.choice(all_test_users)
+collab = recommend_movies_collaborative(random_user, top_n=5)
+content = recommend_movies_content_based(random_user, top_n=5)
+hybrid = recommend_movies_hybrid(random_user, top_n=5)
+
+print(f"\n🎯 KULLANICI {random_user} İÇİN DETAYLI ÖNERİ KARŞILAŞTIRMASI:")
+print(f"\n   İŞBİRLİKÇİ ({len(collab)} film):")
+print(collab[['title', 'popularity']].to_string() if not collab.empty else "   -")
+print(f"\n   İÇERİK TABANLI ({len(content)} film):")
+print(content[['title', 'popularity']].to_string() if not content.empty else "   -")
+print(f"\n   HİBRİT ({len(hybrid)} film):")
+print(hybrid[['title', 'popularity']].to_string() if not hybrid.empty else "   -")
+
+# Küme dağılımı görselleştirmesi
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Cluster büyüklükleri
+cluster_sizes = movies_with_clusters['cluster'].value_counts().sort_index()
+axes[0].bar(cluster_sizes.index, cluster_sizes.values, color='skyblue')
+axes[0].set_title('Cluster Büyüklükleri')
+axes[0].set_xlabel('Cluster')
+axes[0].set_ylabel('Film Sayısı')
+axes[0].grid(True, alpha=0.3)
+
+# Cluster başına ortalama bütçe
+avg_budget_by_cluster = movies_with_clusters.groupby('cluster')['budget'].mean()
+axes[1].bar(avg_budget_by_cluster.index, avg_budget_by_cluster.values, color='coral')
+axes[1].set_title('Cluster Başına Ortalama Bütçe')
+axes[1].set_xlabel('Cluster')
+axes[1].set_ylabel('Ortalama Bütçe ($)')
+axes[1].grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
+# -----------------------------------------------
+# 22) ÖDEVLE İLGİLİ GENEL RAPOR
+# -----------------------------------------------
+
+print("\n" + "="*100)
+print("PROJE ÖZET RAPORU - FİLM ÖNERİ ANALİZİ")
+print("="*100)
+
+report = f"""
+📌 PROJE HEDEFİ:
+   Film dataset üzerine kümeleme analizi ve kullanıcı davranışına dayalı
+   önerici sistem geliştirmek.
+
+📊 VERİ SETİ:
+   • Orijinal: {len(movies_full)} film
+   • Kullanılan: {len(movies_with_clusters)} film (rastgele örneklem)
+   • Özellik Sayısı: 5+ (budget, popularity, revenue, runtime, vote_average, vote_count, vb.)
+
+🔍 YÖNTEMLERİ:
+   1. Veri Ön işlemesi: Eksik veri temizleme, tür parsing
+   2. Keşifsel Veri Analizi: İstatistikler, korelasyon, görselleştirmeler
+   3. Kümeleme: K-Means (k={best_k}) - Elbow & Silhouette yöntemi kullanılarak
+   4. Önerici Sistemi: 
+      • İşbirlikçi Filtreleme (Collaborative Filtering)
+      • İçerik Tabanlı (Content-Based)
+      • Hibrit Yöntem (Hybrid)
+   5. Değerlendirme: Başarı oranı, kullanıcı test sonuçları
+
+📈 SONUÇLAR:
+   • En iyi k değeri: {best_k} (Silhouette skoru)
+   • Kullanıcı sayısı: {user_behavior_df['user_id'].nunique()}
+   • İzleme kaydı: {len(user_behavior_df)}
+   • Öneriler başarı oranı: Ortalama {recommendation_stats['hybrid']['success']/recommendation_stats['hybrid']['total']*100:.1f}%
+
+💾 KAYDEDILEN DOSYALAR:
+   • kmeans_pipeline.joblib
+   • recommendation_system.joblib
+"""
+
+print(report)
+
+# -----------------------------------------------
+# 23) FINAL KAYIT
+# -----------------------------------------------
+
+joblib.dump({
+    "movies_with_clusters": movies_with_clusters,
+    "user_behavior_df": user_behavior_df,
+    "user_item_matrix": user_item_matrix,
+    "recommendation_stats": recommendation_stats,
+    "best_k": best_k,
+    "feature_cols": feature_cols
+}, "complete_project.joblib")
+
+print("\n✅ PROJE TAMAMLANDI - Tüm veriler kaydedildi: complete_project.joblib")
