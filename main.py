@@ -326,10 +326,13 @@ def find_similar_users(user_id, top_n=5):
     if user_id not in user_item_matrix.index:
         return []
     
+    # Kullanıcının izleme vektörü (index = movie_id)
     user_vector = user_item_matrix.loc[user_id]
-    similarities = user_item_matrix.corrwith(user_vector)
+    # Satır bazlı korelasyon (kullanıcı-kullanıcı benzerliği) için axis=1 kullan
+    similarities = user_item_matrix.corrwith(user_vector, axis=1)
+    # Kendisini çıkar ve pozitif korelasyona göre sırala
+    similarities = similarities.drop(index=user_id, errors="ignore")
     similar_users = similarities[similarities > 0].sort_values(ascending=False).head(top_n)
-    
     return similar_users.index.tolist()
 
 def recommend_movies_collaborative(user_id, top_n=5):
