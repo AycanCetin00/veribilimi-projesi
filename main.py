@@ -114,64 +114,82 @@ plt.title("Korelasyon Matrisi")
 plt.show()
 
 # -------------------------------------------
-# 7) KÜMELEME MODELİ (K-MEANS)
+# 7) KÜMELEME MODELİ (K-MEANS) - GÜNCELLENDİ
 # -------------------------------------------
 
-# Kümeleme için sayısal özellikleri seç
-clustering_features = movies_clean[["budget", "popularity", "revenue", "runtime", "vote_average", "vote_count"]].copy()
+# Kullanılacak featureları sabitle
+feature_cols = ["budget", "popularity", "revenue", "runtime", "vote_average", "vote_count"]
 
-# Eksik verileri sil
-clustering_features = clustering_features.dropna()
+# Kopyala ve numeric zorla
+clustering_df = movies_clean[feature_cols].copy()
+for c in feature_cols:
+    clustering_df[c] = pd.to_numeric(clustering_df[c], errors="coerce")
 
-# Verileri standardize et (önemli!)
+# Eksikleri kaldır (index korunur)
+clustering_df = clustering_df.dropna()
+valid_idx = clustering_df.index
+
+# (İsteğe bağlı) Çok büyük çarpık değerler için log1p uygulayabilirsiniz:
+# clustering_df[["budget","revenue"]] = np.log1p(clustering_df[["budget","revenue"]])
+
+# Scale et
 scaler = StandardScaler()
-scaled_features = scaler.fit_transform(clustering_features)
+scaled = scaler.fit_transform(clustering_df)
 
-# Optimal küme sayısını bulmak için Elbow Method
+# Elbow ve Silhouette ile uygun k ara (silhouette için k>=2)
+from sklearn.metrics import silhouette_score
 inertias = []
+sil_scores = []
 K_range = range(1, 11)
-
 for k in K_range:
-    kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-    kmeans.fit(scaled_features)
-    inertias.append(kmeans.inertia_)
+    km = KMeans(n_clusters=k, random_state=42, n_init=10)
+    km.fit(scaled)
+    inertias.append(km.inertia_)
+    if k >= 2:
+        sil_scores.append(silhouette_score(scaled, km.labels_))
+    else:
+        sil_scores.append(np.nan)
 
-# Elbow grafiği
-plt.figure(figsize=(8,5))
+# Görseller
+plt.figure(figsize=(12,4))
+plt.subplot(1,2,1)
 plt.plot(K_range, inertias, "bo-")
-plt.title("Elbow Method - Optimal Küme Sayısı")
-plt.xlabel("Küme Sayısı (k)")
-plt.ylabel("Inertia")
+plt.title("Elbow")
+plt.xlabel("k")
 plt.grid(True)
+
+plt.subplot(1,2,2)
+plt.plot(K_range, sil_scores, "go-")
+plt.title("Silhouette (k>=2 anlamlı)")
+plt.xlabel("k")
+plt.grid(True)
+plt.tight_layout()
 plt.show()
 
-# Optimal k değeri ile modeli eğit (örnek: k=3)
-optimal_k = 3
-kmeans = KMeans(n_clusters=optimal_k, random_state=42, n_init=10)
-clustering_features["cluster"] = kmeans.fit_predict(scaled_features)
+# Otomatik seçim: silhouette en yüksek k (>=2) veya fallback 3
+best_k = int(np.nanargmax(sil_scores) + 1)  # nanargmax döndürür index, index k-1
+if best_k < 2:
+    best_k = 3
 
-print(f"\nKümeleme tamamlandı. {optimal_k} küme oluşturuldu.")
-print("\nKüme dağılımı:")
-print(clustering_features["cluster"].value_counts().sort_index())
+kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
+labels = kmeans.fit_predict(scaled)
 
-# Kümeleme sonuçlarını görselleştir
-plt.figure(figsize=(10,6))
-scatter = plt.scatter(clustering_features["popularity"], 
-                      clustering_features["revenue"], 
-                      c=clustering_features["cluster"], 
-                      cmap="viridis", 
-                      alpha=0.6,
-                      s=50)
-plt.xlabel("Popularity")
-plt.ylabel("Revenue")
-plt.title("K-Means Kümeleme Sonuçları")
-plt.colorbar(scatter, label="Küme")
-plt.show()
+# Sonuçları orijinal veriyle hizala
+movies_clean.loc[valid_idx, "cluster"] = labels
 
-# Küme merkezlerinin özellikleri
-print("\nKüme Merkezlerinin Özellikleri:")
+print(f"\nKümeleme tamamlandı. Seçilen k = {best_k}")
+print(movies_clean["cluster"].value_counts().sort_index())
+
+# Küme merkezleri (orijinal ölçeğe geri döndür)
 centers_df = pd.DataFrame(
     scaler.inverse_transform(kmeans.cluster_centers_),
-    columns=clustering_features.columns[:-1]
+    columns=feature_cols
 )
+print("\nKüme Merkezleri (oranlar orijinal ölçeğe çevrildi):")
 print(centers_df)
+
+# Örnek: her kümedeki top 5 film
+print("\nKüme örnekleri (her kümeden 5 film):")
+for cl in sorted(movies_clean["cluster"].dropna().unique()):
+    print(f"\nCluster {int(cl)}:")
+    print(movies_clean[movies_clean["cluster"]==cl][["title","release_year","budget","revenue","popularity"]].head(5))
