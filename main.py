@@ -263,3 +263,39 @@ def recommend_similar_titles(title, top_n=5):
 # örnek kullanım
 print("\nÖrnek öneri (aynı kümeden):")
 print(recommend_similar_titles(movies_with_clusters["title"].iloc[0], top_n=5))
+
+# Kullanıcı izleme verisi (örnek veri)
+# Bu veri setini kendi verinizle değiştirin
+user_data = pd.DataFrame({
+    'user_id': [1, 1, 1, 2, 2, 3],
+    'movie_id': [101, 102, 103, 101, 104, 105]
+})
+
+# Film bilgilerini birleştirin
+user_movies = user_data.merge(movies_clean[['id', 'title']], left_on='movie_id', right_on='id', how='left')
+
+# Kullanıcı-Film Matrisinin Oluşturulması
+user_movie_matrix = user_data.pivot_table(index='user_id', columns='movie_id', aggfunc='size', fill_value=0)
+
+# Öneri Fonksiyonu
+def recommend_for_user(user_id, top_n=5):
+    if user_id not in user_movie_matrix.index:
+        return []
+    
+    user_vector = user_movie_matrix.loc[user_id]
+    similar_users = user_movie_matrix.corrwith(user_vector)
+    similar_users = similar_users[similar_users > 0].sort_values(ascending=False)
+
+    # En benzer kullanıcıların izlediği filmleri öner
+    recommendations = pd.Series(dtype='float64')
+    for similar_user in similar_users.index:
+        recommendations = recommendations.append(user_movie_matrix.loc[similar_user])
+    
+    recommendations = recommendations.groupby(recommendations.index).sum()
+    recommendations = recommendations[~recommendations.index.isin(user_movie_matrix.loc[user_id][user_movie_matrix.loc[user_id] > 0].index)]
+    return recommendations.nlargest(top_n).index.tolist()
+
+# Örnek kullanım
+print("\nKullanıcı 1 için öneriler:")
+recommended_movies = recommend_for_user(1)
+print(movies_clean[movies_clean['id'].isin(recommended_movies)][['title', 'release_year']])
