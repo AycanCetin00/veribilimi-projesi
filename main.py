@@ -5,6 +5,9 @@ import seaborn as sns
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 import numpy as np
+from sklearn.decomposition import PCA
+import joblib
+from sklearn.metrics.pairwise import euclidean_distances
 
 
 # -------------------------------------------
@@ -193,3 +196,70 @@ print("\nKüme örnekleri (her kümeden 5 film):")
 for cl in sorted(movies_clean["cluster"].dropna().unique()):
     print(f"\nCluster {int(cl)}:")
     print(movies_clean[movies_clean["cluster"]==cl][["title","release_year","budget","revenue","popularity"]].head(5))
+
+# -------------------------
+# 8) KÜMELERİ 2B GÖRSELLEŞTİRME (PCA)
+# -------------------------
+
+pca = PCA(n_components=2, random_state=42)
+proj = pca.fit_transform(scaled)  # scaled değişkeni daha önce oluşturulmuştu
+proj_df = pd.DataFrame(proj, index=valid_idx, columns=["PC1", "PC2"])
+proj_df["cluster"] = labels
+
+plt.figure(figsize=(8,6))
+sns.scatterplot(data=proj_df, x="PC1", y="PC2", hue="cluster", palette="tab10", s=40, alpha=0.7)
+plt.title("PCA ile 2B Görselleştirme - Kümeler")
+plt.legend(title="Cluster")
+plt.show()
+
+# -------------------------
+# 9) KÜME PROFİLLERİ (İSTATİSTİKSEL)
+# -------------------------
+profile = clustering_df.copy()
+profile["cluster"] = labels
+print("\nCluster profilleri (ortalama):")
+print(profile.groupby("cluster").mean().round(2))
+
+print("\nCluster büyüklükleri:")
+print(pd.Series(labels).value_counts().sort_index())
+
+# Tür (genre) dağılımı her kümede
+movies_with_clusters = movies_clean.loc[valid_idx].copy()
+movies_with_clusters["cluster"] = labels
+movies_with_clusters["genre_list"] = movies_with_clusters["genre_list"].apply(lambda g: g if isinstance(g, list) else [])
+genre_by_cluster = (movies_with_clusters.explode("genre_list")
+                    .groupby(["cluster","genre_list"])["title"].count()
+                    .reset_index(name="count"))
+print("\nCluster başına en çok görülen türler (önemli 5):")
+print(genre_by_cluster.sort_values(["cluster","count"], ascending=[True, False]).groupby("cluster").head(5))
+
+# -------------------------
+# 10) KÜMELEME MODELİNİ KAYDETME
+# -------------------------
+joblib.dump({"scaler": scaler, "kmeans": kmeans, "pca": pca}, "kmeans_pipeline.joblib")
+print("\nModel ve pipeline kaydedildi: kmeans_pipeline.joblib")
+
+# -------------------------
+# 11) BASİT ÖNERİ FONKSİYONU (aynı kümeden benzer filmler)
+# -------------------------
+
+def recommend_similar_titles(title, top_n=5):
+    if title not in movies_with_clusters["title"].values:
+        return []
+    idx = movies_with_clusters[movies_with_clusters["title"]==title].index[0]
+    if idx not in valid_idx:
+        return []
+    cl = movies_with_clusters.loc[idx, "cluster"]
+    # candidate'ların scaled özelliklerini al
+    cand_idx = movies_with_clusters[movies_with_clusters["cluster"]==cl].index
+    feat_matrix = scaled[np.isin(valid_idx, cand_idx)]
+    # hedef vektör
+    target_vec = scaled[list(valid_idx).index(idx)]
+    dists = euclidean_distances([target_vec], feat_matrix)[0]
+    ranked = pd.DataFrame({"idx": cand_idx, "dist": dists}).sort_values("dist")
+    ranked = ranked[ranked["idx"] != idx].head(top_n)
+    return movies_with_clusters.loc[ranked["idx"], ["title","release_year","cluster"]]
+
+# örnek kullanım
+print("\nÖrnek öneri (aynı kümeden):")
+print(recommend_similar_titles(movies_with_clusters["title"].iloc[0], top_n=5))
