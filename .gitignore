@@ -1,0 +1,26 @@
+# Byte-compiled / caches
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# IDE / Editor
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Environment variables
+.env
+
+# Data / outputs (isteğe bağlı)
+data/
+plots/
+*.sqlite3
+
+# Ignore local system files
+.DS_Store
+Thumbs.db
