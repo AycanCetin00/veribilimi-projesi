@@ -8,7 +8,9 @@ import numpy as np
 from sklearn.decomposition import PCA
 import joblib
 from sklearn.metrics.pairwise import euclidean_distances
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, classification_report, accuracy_score, roc_auc_score, confusion_matrix, mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 # Türkçe yazı desteği
 plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'DejaVu Sans']
@@ -189,7 +191,7 @@ plt.xlabel("Küme Sayısı (k)")
 plt.ylabel("İç Hata (Inertia - Düşük olması iyi)")
 plt.grid(True, alpha=0.3)
 for i, k in enumerate(K_range):
-    plt.text(k, inertias[i], f'{inertia:.0f}', ha='center', fontsize=8)
+    plt.text(k, inertias[i], f'{inertias[i]:.0f}', ha='center', fontsize=8)
 
 # Silhouette skoru
 plt.subplot(1,2,2)
@@ -304,6 +306,129 @@ for cl in sorted(movies_with_clusters["Küme"].unique()):
 # -------------------------
 joblib.dump({"scaler": scaler, "kmeans": kmeans, "pca": pca}, "kmeans_pipeline.joblib")
 print("\n✅ Model kaydedildi: kmeans_pipeline.joblib")
+
+# -------------------------
+# -------------------------
+# 10b) SINIFLANDIRMA: POPÜLER FİLM TAHMİNİ
+# -------------------------
+print("\n" + "="*100)
+print("🎯 ADIM 3b: SINIFLANDIRMA (POPÜLER FİLM TAHMİNİ) BAŞLATIYORUZ")
+print("="*100)
+
+# Hedef değişken: popularity top %25 → 'is_popular'
+popularity_threshold = movies_with_clusters['popularity'].quantile(0.75)
+movies_for_clf = movies_with_clusters.dropna(subset=['budget','revenue','runtime','vote_average','vote_count','popularity']).copy()
+movies_for_clf[['budget','revenue','runtime','vote_average','vote_count']] = movies_for_clf[['budget','revenue','runtime','vote_average','vote_count']].apply(pd.to_numeric, errors='coerce')
+movies_for_clf = movies_for_clf.dropna(subset=['budget','revenue','runtime','vote_average','vote_count']).copy()
+
+movies_for_clf['is_popular'] = (movies_for_clf['popularity'] >= popularity_threshold).astype(int)
+
+features = ['budget','revenue','runtime','vote_average','vote_count']
+X = movies_for_clf[features]
+y = movies_for_clf['is_popular']
+
+print(f"\n📍 Veri: {len(X)} film, pozitif sınıf (%25 eşiği): {y.sum()}")
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
+
+clf_scaler = StandardScaler()
+X_train_scaled = clf_scaler.fit_transform(X_train)
+X_test_scaled = clf_scaler.transform(X_test)
+
+clf = RandomForestClassifier(n_estimators=100, random_state=42)
+clf.fit(X_train_scaled, y_train)
+
+y_pred = clf.predict(X_test_scaled)
+y_proba = clf.predict_proba(X_test_scaled)[:,1]
+
+print("\n📊 Sınıflandırma Sonuçları (Test Seti):")
+print(classification_report(y_test, y_pred))
+print(f"Accuracy: {accuracy_score(y_test, y_pred):.3f}")
+try:
+    print(f"ROC AUC: {roc_auc_score(y_test, y_proba):.3f}")
+except Exception:
+    pass
+
+# Basit tahmin fonksiyonu
+def predict_popularity_by_title(title):
+    """Başlık vererek filmin popüler olup olmayacağını tahmin et"""
+    if title not in movies_with_clusters['title'].values:
+        print(f"❌ Film '{title}' bulunamadı!")
+        return None
+    idx = movies_with_clusters[movies_with_clusters['title']==title].index[0]
+    row = movies_with_clusters.loc[idx, features]
+    if row.isnull().any():
+        print(f"❌ Gerekli özellikler eksik, tahmin yapılamıyor.")
+        return None
+    X_row = clf_scaler.transform([row.values])
+    pred = clf.predict(X_row)[0]
+    proba = clf.predict_proba(X_row)[0,1]
+    return {'title': title, 'is_popular': int(pred), 'popularity_prob': float(proba)}
+
+# Örnek
+sample_title = movies_with_clusters['title'].iloc[0]
+print("\n💡 ÖRNEK: BİR FİLMİN POPÜLERLİĞİNİ TAHMİN ETME")
+print(sample_title, "→", predict_popularity_by_title(sample_title))
+
+# Model kaydet
+joblib.dump({"clf": clf, "scaler": clf_scaler, "features": features, "threshold": popularity_threshold}, "classification_pipeline.joblib")
+print("\n✅ Sınıflandırma modeli kaydedildi: classification_pipeline.joblib")
+
+# -------------------------
+# 10c) REGRESYON: POPÜLARİTE TAHMİNİ (SÜREKLİ)
+# -------------------------
+print("\n" + "="*100)
+print("🎯 ADIM 3c: REGRESYON (POPÜLARİTE TAHMİNİ) BAŞLATIYORUZ")
+print("="*100)
+
+movies_for_reg = movies_with_clusters.dropna(subset=['budget','revenue','runtime','vote_average','vote_count','popularity']).copy()
+movies_for_reg[['budget','revenue','runtime','vote_average','vote_count','popularity']] = movies_for_reg[['budget','revenue','runtime','vote_average','vote_count','popularity']].apply(pd.to_numeric, errors='coerce')
+movies_for_reg = movies_for_reg.dropna(subset=['budget','revenue','runtime','vote_average','vote_count','popularity']).copy()
+
+features_reg = ['budget','revenue','runtime','vote_average','vote_count']
+Xr = movies_for_reg[features_reg]
+yr = movies_for_reg['popularity']
+
+print(f"\n📍 Veri: {len(Xr)} film")
+
+Xr_train, Xr_test, yr_train, yr_test = train_test_split(Xr, yr, test_size=0.2, random_state=42)
+
+reg_scaler = StandardScaler()
+Xr_train_scaled = reg_scaler.fit_transform(Xr_train)
+Xr_test_scaled = reg_scaler.transform(Xr_test)
+
+reg = RandomForestRegressor(n_estimators=100, random_state=42)
+reg.fit(Xr_train_scaled, yr_train)
+
+yr_pred = reg.predict(Xr_test_scaled)
+mse = mean_squared_error(yr_test, yr_pred)
+rmse = np.sqrt(mse)
+r2 = r2_score(yr_test, yr_pred)
+
+print("\n📊 Regresyon Sonuçları (Test Seti):")
+print(f"RMSE: {rmse:.3f}")
+print(f"R2: {r2:.3f}")
+
+# Basit regresyon tahmin fonksiyonu
+def predict_popularity_regression_by_title(title):
+    if title not in movies_with_clusters['title'].values:
+        print(f"❌ Film '{title}' bulunamadı!")
+        return None
+    idx = movies_with_clusters[movies_with_clusters['title']==title].index[0]
+    row = movies_with_clusters.loc[idx, features_reg]
+    if row.isnull().any():
+        print("❌ Gerekli özellikler eksik, tahmin yapılamıyor.")
+        return None
+    Xrow = reg_scaler.transform([row.values])
+    pred = float(reg.predict(Xrow)[0])
+    return {'title': title, 'predicted_popularity': pred}
+
+# Örnek
+print("\n💡 ÖRNEK: BİR FİLMLİN POPÜLARİTE PUANINI TAHMİN ETME (Regresyon)")
+print(sample_title, "→", predict_popularity_regression_by_title(sample_title))
+
+joblib.dump({"reg": reg, "scaler": reg_scaler, "features": features_reg}, "regression_pipeline.joblib")
+print("\n✅ Regresyon modeli kaydedildi: regression_pipeline.joblib")
 
 # -------------------------
 # 11) BASİT ÖNERİ FONKSİYONU
@@ -638,54 +763,8 @@ axes[1].grid(True, alpha=0.3, axis='y')
 plt.tight_layout()
 plt.show()
 
-# -----------------------------------------------
-# 22) FINAL RAPOR
-# -----------------------------------------------
 
-print("\n" + "="*100)
-print("📋 FİNAL RAPOR - FİLM ÖNERİ SİSTEMİ")
-print("="*100)
 
-report = f"""
-🎯 PROJE NEYİ YAPIYOR?
-   Filmler otomatik olarak benzer özelliklere göre gruplara ayrılıyor.
-   Kullanıcılara da benzer zevkindeki kullanıcıların izlediği filmler öneriliyor.
-
-📊 KULLANILAN VERİ:
-   • Orijinal Kütüphane: {len(movies_full):,} film
-   • Bu Çalıştırmada Kullanılan: {len(movies_with_clusters)} film (rastgele seçildi)
-   • Özellikler: Bütçe, Popülarite, Gelir, Süre, IMDb Puanı, Oy Sayısı
-
-🔬 YAPILAN İŞLEMLER:
-   1️⃣  Veri Temizleme: Eksik verileri tamamla, türleri ayıkla
-   2️⃣  Analiz: İstatistikler, korelasyonlar, görseller
-   3️⃣  Kümeleme: K-Means algoritması ile {best_k} grup oluştur
-   4️⃣  Öneriler: 3 yöntemle film önerileri ver
-   5️⃣  Değerlendirme: Başarı oranlarını ölç
-
-🏆 SONUÇLAR:
-   • Seçilen grup sayısı: {best_k} (Silhouette yöntemiyle)
-   • Simüle edilen kullanıcı sayısı: {user_behavior_df['user_id'].nunique()}
-   • Toplam izleme kaydı: {len(user_behavior_df)}
-   • Hibrit yöntem başarısı: {recommendation_stats['Hibrit']['başarı']/recommendation_stats['Hibrit']['toplam']*100:.1f}%
-
-💾 KAYDEDILEN DOSYALAR:
-   ✓ kmeans_pipeline.joblib - Kümeleme modeli
-   ✓ recommendation_system.joblib - Öneri sistemi
-   ✓ complete_project.joblib - Tüm veriler
-"""
-
-print(report)
-
-# Final kayit
-joblib.dump({
-    "movies_with_clusters": movies_with_clusters,
-    "user_behavior_df": user_behavior_df,
-    "user_item_matrix": user_item_matrix,
-    "recommendation_stats": recommendation_stats,
-    "best_k": best_k,
-    "feature_cols": feature_cols
-}, "complete_project.joblib")
 
 print("\n✅ PROJE TAMAMLANDI!")
 print("💾 Tüm veriler kaydedildi: complete_project.joblib")
