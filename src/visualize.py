@@ -3,15 +3,16 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 from pathlib import Path
+from sklearn.metrics import confusion_matrix, roc_curve, precision_recall_curve
 
 
 def _save_or_show(fig, filename: str | None, save_dir: str | None):
     if save_dir and filename:
         Path(save_dir).mkdir(parents=True, exist_ok=True)
         fig.savefig(Path(save_dir) / filename, bbox_inches="tight")
-        plt.close(fig)
+        plt.show()   # 👈 TAM OLARAK BURAYA
     else:
-        fig.show()
+        plt.show()
 
 
 def plot_basic_distributions(movies: pd.DataFrame, save_dir: str | None = None):
@@ -131,3 +132,137 @@ def plot_cluster_overview(movies_with_clusters: pd.DataFrame, save_dir: str | No
 
     fig.tight_layout()
     _save_or_show(fig, "kume_ozetleri.png", save_dir)
+
+
+def confusion_matrix_clf(y_true, y_pred, save_dir=None):
+    cm = confusion_matrix(y_true, y_pred)
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
+    ax.set_title("Confusion Matrix")
+    ax.set_xlabel("Tahmin")
+    ax.set_ylabel("Gerçek")
+    fig.tight_layout()
+
+    if save_dir:
+        fig.savefig(f"{save_dir}/confusion_matrix_clf.png")
+    plt.show()
+
+def roc_curve_clf(y_true, y_proba, save_dir=None):
+    fpr, tpr, _ = roc_curve(y_true, y_proba)
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.plot(fpr, tpr, label="ROC Curve")
+    ax.plot([0, 1], [0, 1], "k--")
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    ax.set_title("ROC Curve")
+    ax.legend()
+    ax.grid(True)
+    fig.tight_layout()
+
+    if save_dir:
+        fig.savefig(f"{save_dir}/roc_curve_clf.png")
+    plt.show()
+
+def pr_curve_clf(y_true, y_proba, save_dir=None):
+    precision, recall, _ = precision_recall_curve(y_true, y_proba)
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.plot(recall, precision)
+    ax.set_xlabel("Recall")
+    ax.set_ylabel("Precision")
+    ax.set_title("Precision–Recall Curve")
+    ax.grid(True)
+    fig.tight_layout()
+
+    if save_dir:
+        fig.savefig(f"{save_dir}/pr_curve_clf.png")
+    plt.show()
+
+
+def feature_importance_clf(model, feature_names, save_dir=None):
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    importances = model.feature_importances_
+    indices = np.argsort(importances)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    ax.barh(
+        np.array(feature_names)[indices],
+        importances[indices],
+    )
+
+    ax.set_title("Feature Importances - Classification")
+    ax.set_xlabel("Önem Skoru")
+    ax.grid(axis="x", alpha=0.3)
+
+    fig.tight_layout()
+
+    if save_dir:
+        fig.savefig(f"{save_dir}/feature_importance_clf.png")
+
+    plt.show()
+
+
+def feature_importance_reg(model, feature_names, save_dir=None):
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    importances = model.feature_importances_
+    indices = np.argsort(importances)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    ax.barh(
+        np.array(feature_names)[indices],
+        importances[indices],
+    )
+
+    ax.set_title("Feature Importances - Regression")
+    ax.set_xlabel("Önem Skoru")
+    ax.grid(axis="x", alpha=0.3)
+
+    fig.tight_layout()
+
+    if save_dir:
+        fig.savefig(f"{save_dir}/feature_importance_reg.png")
+
+    plt.show()
+
+
+
+def predicted_vs_actual_reg(y_true, y_pred, save_dir=None):
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.scatter(y_true, y_pred, alpha=0.6)
+    ax.plot([y_true.min(), y_true.max()],
+            [y_true.min(), y_true.max()],
+            "r--")
+    ax.set_xlabel("Gerçek Değerler")
+    ax.set_ylabel("Tahmin Edilen Değerler")
+    ax.set_title("Gerçek vs Tahmin (Regresyon)")
+    ax.grid(True)
+    fig.tight_layout()
+
+    if save_dir:
+        fig.savefig(f"{save_dir}/predicted_vs_actual_reg.png")
+    plt.show()
+
+
+def residuals_reg(y_true, y_pred, save_dir=None):
+    residuals = y_true - y_pred
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.hist(residuals, bins=30, edgecolor="black")
+    ax.set_title("Residuals (Hata) Dağılımı")
+    ax.set_xlabel("Hata (Gerçek - Tahmin)")
+    ax.set_ylabel("Frekans")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+
+    if save_dir:
+        fig.savefig(f"{save_dir}/residuals_reg.png")
+    plt.show()
+

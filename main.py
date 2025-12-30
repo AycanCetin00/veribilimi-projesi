@@ -39,6 +39,19 @@ from src.recommendation import (
 )
 from src.stats import print_global_stats, print_cluster_stats, recommendation_success
 
+from src.visualize import (
+    confusion_matrix_clf,
+    roc_curve_clf,
+    pr_curve_clf,
+    feature_importance_clf,
+)
+
+from src.visualize import (
+    feature_importance_reg,
+    predicted_vs_actual_reg,
+    residuals_reg,
+)
+
 
 # Grafiklerde Türkçe karakter desteği
 plt.rcParams["font.sans-serif"] = ["DejaVu Sans"]
@@ -107,33 +120,99 @@ def main():
     save_kmeans_pipeline(scaler, kmeans, pca, "kmeans_pipeline.joblib")
     print("Model kaydedildi: kmeans_pipeline.joblib")
 
-    # 5) Sınıflandırma
+        # 5) Sınıflandırma
     print("\n" + "=" * 80)
     print("SINIFLANDIRMA (popüler film tahmini)")
     print("=" * 80)
-    clf, clf_scaler, clf_metrics = train_classifier(movies_clean.loc[valid_idx], features=MODEL_FEATURES)
+
+    clf, clf_scaler, clf_metrics = train_classifier(
+        movies_clean.loc[valid_idx],
+        features=MODEL_FEATURES
+    )
+
     print("Sınıflandırma raporu:")
     print(clf_metrics["report"])
     print(f"Doğruluk (accuracy): {clf_metrics['accuracy']:.3f}")
+
     if not np.isnan(clf_metrics["roc_auc"]):
         print(f"ROC AUC: {clf_metrics['roc_auc']:.3f}")
+
+    # 🔹 Test verisini tekrar üret (grafikler için)
+    X = movies_clean.loc[valid_idx, MODEL_FEATURES].dropna()
+    y = (movies_clean.loc[X.index, "popularity"] >= clf_metrics["threshold"]).astype(int)
+
+    X_scaled = clf_scaler.transform(X)
+    y_pred = clf.predict(X_scaled)
+    y_proba = clf.predict_proba(X_scaled)[:, 1]
+
+    # 📊 GRAFİKLER
+    feature_importance_clf(clf, MODEL_FEATURES, save_dir=PLOTS_DIR)
+    confusion_matrix_clf(y, y_pred, save_dir=PLOTS_DIR)
+    roc_curve_clf(y, y_proba, save_dir=PLOTS_DIR)
+    pr_curve_clf(y, y_proba, save_dir=PLOTS_DIR)
+
+    # 🔹 Örnek tahmin
     sample_title = movies_clean.loc[valid_idx, "title"].iloc[0]
     print("\nÖrnek tahmin:")
-    print(sample_title, "->", predict_popularity_clf(sample_title, movies_clean, clf, clf_scaler, MODEL_FEATURES))
-    save_clf_pipeline(clf, clf_scaler, MODEL_FEATURES, clf_metrics["threshold"], "classification_pipeline.joblib")
+    print(
+        sample_title,
+        "->",
+        predict_popularity_clf(sample_title, movies_clean, clf, clf_scaler, MODEL_FEATURES)
+    )
+
+    save_clf_pipeline(
+        clf,
+        clf_scaler,
+        MODEL_FEATURES,
+        clf_metrics["threshold"],
+        "classification_pipeline.joblib"
+    )
+
     print("Model kaydedildi: classification_pipeline.joblib")
 
-    # 6) Regresyon
+
+        # 6) Regresyon
     print("\n" + "=" * 80)
     print("REGRESYON (popülerlik skoru tahmini)")
     print("=" * 80)
-    reg, reg_scaler, reg_metrics = train_regressor(movies_clean.loc[valid_idx], features=MODEL_FEATURES)
+
+    reg, reg_scaler, reg_metrics = train_regressor(
+        movies_clean.loc[valid_idx],
+        features=MODEL_FEATURES
+    )
+
     print(f"RMSE: {reg_metrics['rmse']:.3f}")
     print(f"R2: {reg_metrics['r2']:.3f}")
+
+    # 🔹 Grafikler için veri hazırlığı
+    X = movies_clean.loc[valid_idx, MODEL_FEATURES].dropna()
+    y_true = movies_clean.loc[X.index, "popularity"]
+
+    X_scaled = reg_scaler.transform(X)
+    y_pred = reg.predict(X_scaled)
+
+    # 📊 REGRESYON GRAFİKLERİ
+    feature_importance_reg(reg, MODEL_FEATURES, save_dir=PLOTS_DIR)
+    predicted_vs_actual_reg(y_true, y_pred, save_dir=PLOTS_DIR)
+    residuals_reg(y_true, y_pred, save_dir=PLOTS_DIR)
+
+    # 🔹 Örnek tahmin
     print("\nÖrnek tahmin:")
-    print(sample_title, "->", predict_popularity_reg(sample_title, movies_clean, reg, reg_scaler, MODEL_FEATURES))
-    save_reg_pipeline(reg, reg_scaler, MODEL_FEATURES, "regression_pipeline.joblib")
+    print(
+        sample_title,
+        "->",
+        predict_popularity_reg(sample_title, movies_clean, reg, reg_scaler, MODEL_FEATURES)
+    )
+
+    save_reg_pipeline(
+        reg,
+        reg_scaler,
+        MODEL_FEATURES,
+        "regression_pipeline.joblib"
+    )
+
     print("Model kaydedildi: regression_pipeline.joblib")
+
 
     # 7) Basit içerik tabanlı öneriler (kümeler içinde)
     print("\n" + "=" * 80)
